@@ -1,5 +1,4 @@
 using Microsoft.Toolkit.Uwp.Notifications;
-using Windows.Data.Xml.Dom;
 using Windows.UI.Notifications;
 
 namespace Notifyer;
@@ -8,7 +7,47 @@ public static class ToastService
 {
     public static void Show(string title, string message, string soundId, bool bypassDoNotDisturb)
     {
+        try
+        {
+            ShowCore(title, message, soundId, bypassDoNotDisturb);
+        }
+        catch (Exception ex)
+        {
+            // Never take down the tray app over a toast failure.
+            try
+            {
+                MessageBox.Show(
+                    $"Bildirim gösterilemedi:\n{ex.Message}",
+                    "Notifyer",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Warning);
+            }
+            catch
+            {
+                // ignore UI failures
+            }
+        }
+    }
+
+    private static void ShowCore(string title, string message, string soundId, bool bypassDoNotDisturb)
+    {
         var sound = ToastSounds.Resolve(soundId);
+        var isLoopingSound = sound.Uri?.Contains(".Looping.", StringComparison.Ordinal) == true;
+
+        // Windows only allows looping audio with alarm / incomingCall scenarios.
+        // Mixing Loop=true with "urgent" or default throws (unhandled on tray click).
+        string? scenario = null;
+        if (isLoopingSound)
+        {
+            scenario = sound.Id.StartsWith("call", StringComparison.OrdinalIgnoreCase)
+                ? "incomingCall"
+                : "alarm";
+        }
+        else if (bypassDoNotDisturb)
+        {
+            scenario = "urgent";
+        }
+
         var builder = new ToastContentBuilder()
             .AddText(title)
             .AddText(message);
@@ -22,35 +61,30 @@ public static class ToastService
             builder.AddAudio(new ToastAudio
             {
                 Src = new Uri(sound.Uri),
-                // Looping alarm/call sounds only loop while the toast is on screen.
-                Loop = sound.Uri.Contains(".Looping.", StringComparison.Ordinal)
+                Loop = isLoopingSound
             });
         }
 
-        if (bypassDoNotDisturb)
+        if (scenario is "alarm" or "incomingCall")
         {
-            // Dismiss action helps alarm-like toasts behave correctly on Focus Assist.
             builder.AddButton(new ToastButton()
                 .SetContent("Tamam")
-                .AddArgument("action", "dismiss")
                 .SetDismissActivation());
         }
 
         var xml = builder.GetToastContent().GetXml();
-
-        if (bypassDoNotDisturb)
-        {
-            // "urgent" = Important notification — breaks through Do Not Disturb / game DND
-            // on Windows 10 19041+ and Windows 11. Toolkit has no enum for this yet.
-            xml.DocumentElement?.SetAttribute("scenario", "urgent");
-        }
+        if (scenario is not null)
+            xml.DocumentElement?.SetAttribute("scenario", scenario);
 
         var toast = new ToastNotification(xml)
         {
             ExpirationTime = DateTimeOffset.Now.AddMinutes(5),
-            Priority = ToastNotificationPriority.High
+            Priority = bypassDoNotDisturb || scenario is not null
+                ? ToastNotificationPriority.High
+                : ToastNotificationPriority.Default
         };
 
+        // Ensure COM/AUMID registration (same path ToastContentBuilder.Show uses).
         ToastNotificationManagerCompat.CreateToastNotifier().Show(toast);
     }
 }
