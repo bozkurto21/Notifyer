@@ -8,17 +8,29 @@ namespace Notifyer;
 public sealed class AppConfig
 {
     public int IntervalMinutes { get; set; } = 20;
-    public bool SoundEnabled { get; set; } = true;
+
+    /// <summary>Legacy; migrated into <see cref="Sound"/> on load.</summary>
+    public bool? SoundEnabled { get; set; }
+
+    /// <summary>Toast sound id from <see cref="ToastSounds"/> (e.g. default, reminder, alarm5, off).</summary>
+    public string Sound { get; set; } = ToastSounds.Default;
+
     public string Message { get; set; } = "Camdan dışarı bak, gözlerini dinlendir.";
     public int FilmModeMinutes { get; set; } = 180;
     public List<string> QuietProcesses { get; set; } = ["cs2.exe", "csgo.exe"];
     public bool StartWithWindows { get; set; } = true;
+
+    /// <summary>Use urgent toast scenario so reminders can break through Do Not Disturb / game focus.</summary>
+    public bool BypassDoNotDisturb { get; set; } = true;
 
     [JsonIgnore]
     public bool FilmModeEnabled { get; set; }
 
     [JsonIgnore]
     public bool IsPaused { get; set; }
+
+    [JsonIgnore]
+    public bool IsSoundOn => !ToastSounds.Resolve(Sound).Id.Equals(ToastSounds.Off, StringComparison.OrdinalIgnoreCase);
 }
 
 public static class ConfigStore
@@ -92,6 +104,17 @@ public static class ConfigStore
 
         if (config.FilmModeMinutes < 1)
             config.FilmModeMinutes = 1;
+
+        // Migrate old soundEnabled bool → sound id.
+        if (config.SoundEnabled is false &&
+            (string.IsNullOrWhiteSpace(config.Sound) ||
+             config.Sound.Equals(ToastSounds.Default, StringComparison.OrdinalIgnoreCase)))
+        {
+            config.Sound = ToastSounds.Off;
+        }
+
+        config.SoundEnabled = null;
+        config.Sound = ToastSounds.Resolve(config.Sound).Id;
 
         config.QuietProcesses ??= [];
         config.QuietProcesses = config.QuietProcesses

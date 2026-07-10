@@ -7,7 +7,8 @@ public sealed class TrayApp : ApplicationContext
     private readonly NotifyIcon _tray;
     private readonly ToolStripMenuItem _pauseItem;
     private readonly ToolStripMenuItem _filmItem;
-    private readonly ToolStripMenuItem _soundItem;
+    private readonly ToolStripMenuItem _soundMenu;
+    private readonly ToolStripMenuItem _bypassDndItem;
     private readonly ToolStripMenuItem _startupItem;
     private readonly ToolStripMenuItem _statusItem;
     private readonly Icon _icon;
@@ -23,7 +24,12 @@ public sealed class TrayApp : ApplicationContext
         _statusItem = new ToolStripMenuItem("Durum") { Enabled = false };
         _pauseItem = new ToolStripMenuItem("Duraklat", null, OnTogglePause);
         _filmItem = new ToolStripMenuItem("Film Modu", null, OnToggleFilmMode) { CheckOnClick = true };
-        _soundItem = new ToolStripMenuItem("Ses", null, OnToggleSound) { CheckOnClick = true, Checked = config.SoundEnabled };
+        _soundMenu = BuildSoundMenu();
+        _bypassDndItem = new ToolStripMenuItem("Do Not Disturb’ı aş", null, OnToggleBypassDnd)
+        {
+            CheckOnClick = true,
+            Checked = config.BypassDoNotDisturb
+        };
         _startupItem = new ToolStripMenuItem("Windows ile başlat", null, OnToggleStartup)
         {
             CheckOnClick = true,
@@ -52,10 +58,12 @@ public sealed class TrayApp : ApplicationContext
         menu.Items.Add(_pauseItem);
         menu.Items.Add(_filmItem);
         menu.Items.Add(intervalMenu);
-        menu.Items.Add(_soundItem);
+        menu.Items.Add(_soundMenu);
+        menu.Items.Add(_bypassDndItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Config’i aç", null, OnOpenConfig));
         menu.Items.Add(new ToolStripMenuItem("Config’i yeniden yükle", null, OnReloadConfig));
+        menu.Items.Add(new ToolStripMenuItem("Test bildirimi", null, OnTestToast));
         menu.Items.Add(_startupItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Çıkış", null, OnExit));
@@ -72,6 +80,60 @@ public sealed class TrayApp : ApplicationContext
 
         StartupService.Apply(config.StartWithWindows);
         UpdateStatusText();
+    }
+
+    private ToolStripMenuItem BuildSoundMenu()
+    {
+        var menu = new ToolStripMenuItem("Ses");
+        string? lastGroup = null;
+
+        foreach (var option in ToastSounds.All)
+        {
+            var group = option.Id switch
+            {
+                ToastSounds.Off => "off",
+                ToastSounds.Default or "im" or "mail" or "reminder" or "sms" => "basic",
+                _ when option.Id.StartsWith("alarm", StringComparison.Ordinal) => "alarm",
+                _ => "call"
+            };
+
+            if (lastGroup is not null && lastGroup != group)
+                menu.DropDownItems.Add(new ToolStripSeparator());
+            lastGroup = group;
+
+            var id = option.Id;
+            var item = new ToolStripMenuItem(option.Label, null, (_, _) => SetSound(id))
+            {
+                Checked = option.Id.Equals(_config.Sound, StringComparison.OrdinalIgnoreCase),
+                Tag = option.Id
+            };
+            menu.DropDownItems.Add(item);
+        }
+
+        return menu;
+    }
+
+    private void SetSound(string soundId)
+    {
+        _config.Sound = ToastSounds.Resolve(soundId).Id;
+        ConfigStore.Save(_config);
+        RefreshSoundMenuChecks();
+
+        // Preview so the user hears the chosen system sound immediately.
+        ToastService.Show(
+            "Notifyer",
+            $"Ses: {ToastSounds.Resolve(_config.Sound).Label}",
+            _config.Sound,
+            bypassDoNotDisturb: false);
+    }
+
+    private void RefreshSoundMenuChecks()
+    {
+        foreach (ToolStripItem item in _soundMenu.DropDownItems)
+        {
+            if (item is ToolStripMenuItem mi && mi.Tag is string id)
+                mi.Checked = id.Equals(_config.Sound, StringComparison.OrdinalIgnoreCase);
+        }
     }
 
     private void SetInterval(int minutes)
@@ -142,9 +204,9 @@ public sealed class TrayApp : ApplicationContext
         _engine.SetFilmMode(_filmItem.Checked);
     }
 
-    private void OnToggleSound(object? sender, EventArgs e)
+    private void OnToggleBypassDnd(object? sender, EventArgs e)
     {
-        _config.SoundEnabled = _soundItem.Checked;
+        _config.BypassDoNotDisturb = _bypassDndItem.Checked;
         ConfigStore.Save(_config);
     }
 
@@ -157,11 +219,17 @@ public sealed class TrayApp : ApplicationContext
 
     private void OnOpenConfig(object? sender, EventArgs e) => ConfigStore.OpenInEditor();
 
+    private void OnTestToast(object? sender, EventArgs e)
+    {
+        ToastService.Show("Notifyer", _config.Message, _config.Sound, _config.BypassDoNotDisturb);
+    }
+
     private void OnReloadConfig(object? sender, EventArgs e)
     {
         _engine.ReloadQuietListFromDisk();
-        _soundItem.Checked = _config.SoundEnabled;
+        _bypassDndItem.Checked = _config.BypassDoNotDisturb;
         _startupItem.Checked = _config.StartWithWindows;
+        RefreshSoundMenuChecks();
         StartupService.Apply(_config.StartWithWindows);
         SetInterval(_config.IntervalMinutes);
         UpdateStatusText();

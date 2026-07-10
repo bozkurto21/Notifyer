@@ -94,7 +94,8 @@ public sealed class ReminderEngine : IDisposable
         {
             _config.QuietProcesses = fresh.QuietProcesses;
             _config.Message = fresh.Message;
-            _config.SoundEnabled = fresh.SoundEnabled;
+            _config.Sound = fresh.Sound;
+            _config.BypassDoNotDisturb = fresh.BypassDoNotDisturb;
             _config.FilmModeMinutes = fresh.FilmModeMinutes;
             _config.IntervalMinutes = fresh.IntervalMinutes;
             _config.StartWithWindows = fresh.StartWithWindows;
@@ -149,7 +150,7 @@ public sealed class ReminderEngine : IDisposable
 
     private void FireReminder(bool consumeFilmMode)
     {
-        ToastService.Show("Notifyer", _config.Message, _config.SoundEnabled);
+        ToastService.Show("Notifyer", _config.Message, _config.Sound, _config.BypassDoNotDisturb);
 
         _deferred = false;
 

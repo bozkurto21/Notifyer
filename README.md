@@ -5,7 +5,8 @@ Windows system-tray app that reminds you to rest your eyes on an interval. Stays
 ## Features
 
 - Editable interval (default 20 min)
-- Windows toast notification (+ sound on/off)
+- Windows toast with **selectable system sounds** (Default, Reminder, Mail, Alarms, Calls, …)
+- **Bypass Do Not Disturb** (urgent toast) so reminders can still appear during game focus / DND
 - **Quiet Apps:** no toast while listed processes are running; fires as soon as they exit
 - **Film Mode:** next reminder in ~3 hours, then back to normal
 - Start with Windows
@@ -28,7 +29,7 @@ Self-contained single exe:
 
 ```powershell
 cd Notifyer
-dotnet publish -c Release -r win-x64 --self-contained true -o ..\publish
+dotnet publish -c Release -r win-x64 --self-contained true -o ..\..
 ```
 
 ## Config example
@@ -36,12 +37,19 @@ dotnet publish -c Release -r win-x64 --self-contained true -o ..\publish
 ```json
 {
   "intervalMinutes": 20,
-  "soundEnabled": true,
+  "sound": "reminder",
+  "bypassDoNotDisturb": true,
   "message": "Camdan dışarı bak, gözlerini dinlendir.",
   "filmModeMinutes": 180,
   "quietProcesses": ["cs2.exe", "csgo.exe"],
   "startWithWindows": true
 }
 ```
+
+`sound` values: `off`, `default`, `im`, `mail`, `reminder`, `sms`, `alarm`…`alarm10`, `call`…`call10`.
+
+Tray menu: **Ses**, **Do Not Disturb’ı aş**, **Test bildirimi**.
+
+If a game still swallows toasts, add the game to `quietProcesses` (defer until exit) or check Windows **Settings → System → Notifications** priority list for Notifyer.
 
 Add a game to `quietProcesses`, then use **Reload config** from the tray menu.
