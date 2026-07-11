@@ -32,22 +32,10 @@ public static class ToastService
     private static void ShowCore(string title, string message, string soundId, bool bypassDoNotDisturb)
     {
         var sound = ToastSounds.Resolve(soundId);
-        var isLoopingSound = sound.Uri?.Contains(".Looping.", StringComparison.Ordinal) == true;
 
-        // Windows only allows looping audio with alarm / incomingCall scenarios.
-        // Mixing Loop=true with "urgent" or default throws (unhandled on tray click).
-        string? scenario = null;
-        if (isLoopingSound)
-        {
-            scenario = sound.Id.StartsWith("call", StringComparison.OrdinalIgnoreCase)
-                ? "incomingCall"
-                : "alarm";
-        }
-        else if (bypassDoNotDisturb)
-        {
-            scenario = "urgent";
-        }
-
+        // IMPORTANT: never use alarm / incomingCall scenarios for eye-rest toasts.
+        // Those stay on screen, loop audio, and can steal focus from fullscreen video.
+        // Play any selected system sound once (Loop=false), even Alarm/Call catalog entries.
         var builder = new ToastContentBuilder()
             .AddText(title)
             .AddText(message);
@@ -61,30 +49,24 @@ public static class ToastService
             builder.AddAudio(new ToastAudio
             {
                 Src = new Uri(sound.Uri),
-                Loop = isLoopingSound
+                Loop = false
             });
         }
 
-        if (scenario is "alarm" or "incomingCall")
-        {
-            builder.AddButton(new ToastButton()
-                .SetContent("Tamam")
-                .SetDismissActivation());
-        }
-
         var xml = builder.GetToastContent().GetXml();
-        if (scenario is not null)
-            xml.DocumentElement?.SetAttribute("scenario", scenario);
+
+        // "urgent" can break through Do Not Disturb without the modal alarm UX.
+        if (bypassDoNotDisturb)
+            xml.DocumentElement?.SetAttribute("scenario", "urgent");
 
         var toast = new ToastNotification(xml)
         {
-            ExpirationTime = DateTimeOffset.Now.AddMinutes(5),
-            Priority = bypassDoNotDisturb || scenario is not null
+            ExpirationTime = DateTimeOffset.Now.AddSeconds(8),
+            Priority = bypassDoNotDisturb
                 ? ToastNotificationPriority.High
                 : ToastNotificationPriority.Default
         };
 
-        // Ensure COM/AUMID registration (same path ToastContentBuilder.Show uses).
         ToastNotificationManagerCompat.CreateToastNotifier().Show(toast);
     }
 }

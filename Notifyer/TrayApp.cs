@@ -258,7 +258,7 @@ public sealed class TrayApp : ApplicationContext
 
         string status;
         if (_engine.IsPaused)
-            status = "Duraklatıldı";
+            status = $"Duraklatıldı — kalan: {FormatRemaining(_engine.TimeUntilNext)}";
         else if (_engine.IsDeferred)
             status = "Sessiz uygulama — çıkışta hatırlatılacak";
         else if (_engine.FilmModeEnabled)

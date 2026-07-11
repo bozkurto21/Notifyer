@@ -11,6 +11,7 @@ public sealed class ReminderEngine : IDisposable
     private readonly object _gate = new();
 
     private DateTime _nextDueUtc;
+    private TimeSpan? _remainingWhenPaused;
     private bool _deferred;
     private bool _disposed;
     private int _statusTick;
@@ -38,6 +39,10 @@ public sealed class ReminderEngine : IDisposable
     {
         get
         {
+            // While paused, show the frozen remainder (don't let wall-clock eat it).
+            if (_config.IsPaused && _remainingWhenPaused is { } frozen)
+                return frozen < TimeSpan.Zero ? TimeSpan.Zero : frozen;
+
             var remaining = _nextDueUtc - DateTime.UtcNow;
             return remaining < TimeSpan.Zero ? TimeSpan.Zero : remaining;
         }
@@ -50,9 +55,30 @@ public sealed class ReminderEngine : IDisposable
     {
         lock (_gate)
         {
-            _config.IsPaused = paused;
-            if (!paused && !_deferred)
-                ScheduleNext();
+            if (paused == _config.IsPaused)
+                return;
+
+            if (paused)
+            {
+                var remaining = _deferred
+                    ? TimeSpan.Zero
+                    : _nextDueUtc - DateTime.UtcNow;
+                if (remaining < TimeSpan.Zero)
+                    remaining = TimeSpan.Zero;
+
+                _remainingWhenPaused = remaining;
+                _config.IsPaused = true;
+            }
+            else
+            {
+                _config.IsPaused = false;
+
+                // Resume from the same remaining time — do NOT reset the interval.
+                if (!_deferred && _remainingWhenPaused is { } remaining)
+                    _nextDueUtc = DateTime.UtcNow + remaining;
+
+                _remainingWhenPaused = null;
+            }
         }
 
         RaiseStateChanged();
@@ -65,6 +91,7 @@ public sealed class ReminderEngine : IDisposable
             _filmRule.SetEnabled(enabled);
             _config.FilmModeEnabled = enabled;
             _deferred = false;
+            _remainingWhenPaused = null;
             ScheduleNext();
         }
 
@@ -80,6 +107,7 @@ public sealed class ReminderEngine : IDisposable
             if (!_filmRule.Enabled)
             {
                 _deferred = false;
+                _remainingWhenPaused = null;
                 ScheduleNext();
             }
         }
@@ -119,7 +147,13 @@ public sealed class ReminderEngine : IDisposable
         lock (_gate)
         {
             if (_config.IsPaused)
+            {
+                // Still refresh tray status occasionally while paused.
+                _statusTick++;
+                if (_statusTick % 10 == 0)
+                    RaiseStateChanged();
                 return;
+            }
 
             _statusTick++;
             if (_statusTick % 10 == 0)
@@ -127,7 +161,7 @@ public sealed class ReminderEngine : IDisposable
 
             if (_deferred)
             {
-                // Light poll while waiting for a quiet app to exit.
+                // Interval already elapsed during a quiet app — fire as soon as it exits.
                 if (_statusTick % 5 == 0 && !_quietRule.IsQuietActive(_config.QuietProcesses))
                     FireReminder(consumeFilmMode: true);
 
@@ -137,6 +171,7 @@ public sealed class ReminderEngine : IDisposable
             if (DateTime.UtcNow < _nextDueUtc)
                 return;
 
+            // Quiet apps do NOT reset the timer; they only defer the toast.
             if (_quietRule.IsQuietActive(_config.QuietProcesses))
             {
                 _deferred = true;
@@ -153,6 +188,7 @@ public sealed class ReminderEngine : IDisposable
         ToastService.Show("Notifyer", _config.Message, _config.Sound, _config.BypassDoNotDisturb);
 
         _deferred = false;
+        _remainingWhenPaused = null;
 
         if (consumeFilmMode && _filmRule.Enabled)
         {
@@ -172,7 +208,6 @@ public sealed class ReminderEngine : IDisposable
 
     private void RaiseStateChanged()
     {
-        // Marshal to UI thread if needed — Timer already on UI thread for WinForms.
         StateChanged?.Invoke();
     }
 }
