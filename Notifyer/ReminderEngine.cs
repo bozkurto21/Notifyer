@@ -84,6 +84,31 @@ public sealed class ReminderEngine : IDisposable
         RaiseStateChanged();
     }
 
+    /// <summary>
+    /// Restart the countdown from a full interval. Does not fire a toast.
+    /// Keeps pause/film-mode flags; if paused, frozen remainder becomes a full interval.
+    /// </summary>
+    public void Reset()
+    {
+        lock (_gate)
+        {
+            _deferred = false;
+            ScheduleNext();
+
+            if (_config.IsPaused)
+            {
+                var minutes = _filmRule.Enabled ? _config.FilmModeMinutes : _config.IntervalMinutes;
+                _remainingWhenPaused = TimeSpan.FromMinutes(minutes);
+            }
+            else
+            {
+                _remainingWhenPaused = null;
+            }
+        }
+
+        RaiseStateChanged();
+    }
+
     public void SetFilmMode(bool enabled)
     {
         lock (_gate)

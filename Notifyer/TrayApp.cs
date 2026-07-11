@@ -56,6 +56,7 @@ public sealed class TrayApp : ApplicationContext
         menu.Items.Add(_statusItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(_pauseItem);
+        menu.Items.Add(new ToolStripMenuItem("Sıfırla", null, OnReset));
         menu.Items.Add(_filmItem);
         menu.Items.Add(intervalMenu);
         menu.Items.Add(_soundMenu);
@@ -197,6 +198,12 @@ public sealed class TrayApp : ApplicationContext
     private void OnTogglePause(object? sender, EventArgs e)
     {
         _engine.SetPaused(!_engine.IsPaused);
+    }
+
+    private void OnReset(object? sender, EventArgs e)
+    {
+        _engine.Reset();
+        UpdateStatusText();
     }
 
     private void OnToggleFilmMode(object? sender, EventArgs e)
