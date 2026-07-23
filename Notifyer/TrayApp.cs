@@ -1,12 +1,16 @@
+using System.Diagnostics;
+
 namespace Notifyer;
 
 public sealed class TrayApp : ApplicationContext
 {
     private readonly AppConfig _config;
     private readonly ReminderEngine _engine;
+    private readonly DailyPhoneCheckEngine _phoneCheck;
     private readonly NotifyIcon _tray;
     private readonly ToolStripMenuItem _pauseItem;
     private readonly ToolStripMenuItem _filmItem;
+    private readonly ToolStripMenuItem _phoneCheckItem;
     private readonly ToolStripMenuItem _soundMenu;
     private readonly ToolStripMenuItem _bypassDndItem;
     private readonly ToolStripMenuItem _startupItem;
@@ -17,6 +21,7 @@ public sealed class TrayApp : ApplicationContext
     {
         _config = config;
         _engine = new ReminderEngine(config);
+        _phoneCheck = new DailyPhoneCheckEngine(config);
         _engine.StateChanged += UpdateStatusText;
 
         _icon = CreateTrayIcon();
@@ -24,6 +29,11 @@ public sealed class TrayApp : ApplicationContext
         _statusItem = new ToolStripMenuItem("Durum") { Enabled = false };
         _pauseItem = new ToolStripMenuItem("Duraklat", null, OnTogglePause);
         _filmItem = new ToolStripMenuItem("Film Modu", null, OnToggleFilmMode) { CheckOnClick = true };
+        _phoneCheckItem = new ToolStripMenuItem("Telefon kontrolü (12/14/16)", null, OnTogglePhoneCheck)
+        {
+            CheckOnClick = true,
+            Checked = config.PhoneCheckEnabled
+        };
         _soundMenu = BuildSoundMenu();
         _bypassDndItem = new ToolStripMenuItem("Do Not Disturb’ı aş", null, OnToggleBypassDnd)
         {
@@ -58,13 +68,16 @@ public sealed class TrayApp : ApplicationContext
         menu.Items.Add(_pauseItem);
         menu.Items.Add(new ToolStripMenuItem("Sıfırla", null, OnReset));
         menu.Items.Add(_filmItem);
+        menu.Items.Add(_phoneCheckItem);
         menu.Items.Add(intervalMenu);
         menu.Items.Add(_soundMenu);
         menu.Items.Add(_bypassDndItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Config’i aç", null, OnOpenConfig));
         menu.Items.Add(new ToolStripMenuItem("Config’i yeniden yükle", null, OnReloadConfig));
+        menu.Items.Add(new ToolStripMenuItem("Dosya konumunu aç", null, OnOpenFileLocation));
         menu.Items.Add(new ToolStripMenuItem("Test bildirimi", null, OnTestToast));
+        menu.Items.Add(new ToolStripMenuItem("Test telefon kontrolü", null, OnTestPhoneCheck));
         menu.Items.Add(_startupItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add(new ToolStripMenuItem("Çıkış", null, OnExit));
@@ -211,6 +224,12 @@ public sealed class TrayApp : ApplicationContext
         _engine.SetFilmMode(_filmItem.Checked);
     }
 
+    private void OnTogglePhoneCheck(object? sender, EventArgs e)
+    {
+        _config.PhoneCheckEnabled = _phoneCheckItem.Checked;
+        ConfigStore.Save(_config);
+    }
+
     private void OnToggleBypassDnd(object? sender, EventArgs e)
     {
         _config.BypassDoNotDisturb = _bypassDndItem.Checked;
@@ -226,19 +245,45 @@ public sealed class TrayApp : ApplicationContext
 
     private void OnOpenConfig(object? sender, EventArgs e) => ConfigStore.OpenInEditor();
 
+    private void OnOpenFileLocation(object? sender, EventArgs e)
+    {
+        var exePath = Environment.ProcessPath;
+        if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
+            return;
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "explorer.exe",
+            Arguments = $"/select,\"{exePath}\"",
+            UseShellExecute = true
+        });
+    }
+
     private void OnTestToast(object? sender, EventArgs e)
     {
         ToastService.Show("Notifyer", _config.Message, _config.Sound, _config.BypassDoNotDisturb);
     }
 
+    private void OnTestPhoneCheck(object? sender, EventArgs e)
+    {
+        ToastService.Show(
+            "Notifyer",
+            _config.PhoneCheckMessage,
+            _config.PhoneCheckSound,
+            _config.PhoneCheckBypassDoNotDisturb,
+            persistUntilDismissed: true);
+    }
+
     private void OnReloadConfig(object? sender, EventArgs e)
     {
         _engine.ReloadQuietListFromDisk();
+        _phoneCheckItem.Checked = _config.PhoneCheckEnabled;
         _bypassDndItem.Checked = _config.BypassDoNotDisturb;
         _startupItem.Checked = _config.StartWithWindows;
         RefreshSoundMenuChecks();
         StartupService.Apply(_config.StartWithWindows);
         SetInterval(_config.IntervalMinutes);
+        _phoneCheck.ReloadFromConfig();
         UpdateStatusText();
         _tray.ShowBalloonTip(2000, "Notifyer", "Config yeniden yüklendi.", ToolTipIcon.Info);
     }
@@ -247,6 +292,7 @@ public sealed class TrayApp : ApplicationContext
     {
         _tray.Visible = false;
         _engine.Dispose();
+        _phoneCheck.Dispose();
         _tray.Dispose();
         _icon.Dispose();
         Application.Exit();
@@ -316,6 +362,7 @@ public sealed class TrayApp : ApplicationContext
         if (disposing)
         {
             _engine.Dispose();
+            _phoneCheck.Dispose();
             _tray.Dispose();
             _icon.Dispose();
         }

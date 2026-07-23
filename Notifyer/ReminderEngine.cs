@@ -152,6 +152,11 @@ public sealed class ReminderEngine : IDisposable
             _config.FilmModeMinutes = fresh.FilmModeMinutes;
             _config.IntervalMinutes = fresh.IntervalMinutes;
             _config.StartWithWindows = fresh.StartWithWindows;
+            _config.PhoneCheckEnabled = fresh.PhoneCheckEnabled;
+            _config.PhoneCheckTimes = fresh.PhoneCheckTimes;
+            _config.PhoneCheckMessage = fresh.PhoneCheckMessage;
+            _config.PhoneCheckSound = fresh.PhoneCheckSound;
+            _config.PhoneCheckBypassDoNotDisturb = fresh.PhoneCheckBypassDoNotDisturb;
         }
 
         RaiseStateChanged();

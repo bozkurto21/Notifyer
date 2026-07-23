@@ -5,11 +5,16 @@ namespace Notifyer;
 
 public static class ToastService
 {
-    public static void Show(string title, string message, string soundId, bool bypassDoNotDisturb)
+    public static void Show(
+        string title,
+        string message,
+        string soundId,
+        bool bypassDoNotDisturb,
+        bool persistUntilDismissed = false)
     {
         try
         {
-            ShowCore(title, message, soundId, bypassDoNotDisturb);
+            ShowCore(title, message, soundId, bypassDoNotDisturb, persistUntilDismissed);
         }
         catch (Exception ex)
         {
@@ -29,7 +34,12 @@ public static class ToastService
         }
     }
 
-    private static void ShowCore(string title, string message, string soundId, bool bypassDoNotDisturb)
+    private static void ShowCore(
+        string title,
+        string message,
+        string soundId,
+        bool bypassDoNotDisturb,
+        bool persistUntilDismissed)
     {
         var sound = ToastSounds.Resolve(soundId);
 
@@ -39,6 +49,17 @@ public static class ToastService
         var builder = new ToastContentBuilder()
             .AddText(title)
             .AddText(message);
+
+        if (persistUntilDismissed)
+        {
+            // Reminder stays on-screen until the user acts — requires at least one button.
+            builder
+                .SetToastScenario(ToastScenario.Reminder)
+                .AddButton(new ToastButton()
+                    .SetContent("Tamam")
+                    .AddArgument("action", "dismiss")
+                    .SetBackgroundActivation());
+        }
 
         if (sound.Id == ToastSounds.Off || sound.Uri is null)
         {
@@ -55,14 +76,17 @@ public static class ToastService
 
         var xml = builder.GetToastContent().GetXml();
 
-        // "urgent" can break through Do Not Disturb without the modal alarm UX.
-        if (bypassDoNotDisturb)
+        // Eye-rest: "urgent" can break through DND without the modal reminder UX.
+        // Persistent phone-check already uses scenario=reminder; don't overwrite it.
+        if (!persistUntilDismissed && bypassDoNotDisturb)
             xml.DocumentElement?.SetAttribute("scenario", "urgent");
 
         var toast = new ToastNotification(xml)
         {
-            ExpirationTime = DateTimeOffset.Now.AddSeconds(8),
-            Priority = bypassDoNotDisturb
+            ExpirationTime = persistUntilDismissed
+                ? DateTimeOffset.Now.AddHours(12)
+                : DateTimeOffset.Now.AddSeconds(8),
+            Priority = bypassDoNotDisturb || persistUntilDismissed
                 ? ToastNotificationPriority.High
                 : ToastNotificationPriority.Default
         };

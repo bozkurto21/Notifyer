@@ -17,11 +17,24 @@ public sealed class AppConfig
 
     public string Message { get; set; } = "Camdan dışarı bak, gözlerini dinlendir.";
     public int FilmModeMinutes { get; set; } = 180;
-    public List<string> QuietProcesses { get; set; } = ["cs2.exe", "csgo.exe"];
+    public List<string> QuietProcesses { get; set; } = ["cs2.exe", "csgo.exe", "EscapeFromTarkov.exe"];
     public bool StartWithWindows { get; set; } = true;
 
     /// <summary>Use urgent toast scenario so reminders can break through Do Not Disturb / game focus.</summary>
     public bool BypassDoNotDisturb { get; set; } = true;
+
+    /// <summary>Daily fixed-time "check your phone" reminders. Independent of eye-rest rules.</summary>
+    public bool PhoneCheckEnabled { get; set; } = true;
+
+    /// <summary>Local times as HH:mm (e.g. 12:00, 14:00, 16:00).</summary>
+    public List<string> PhoneCheckTimes { get; set; } = ["12:00", "14:00", "16:00"];
+
+    public string PhoneCheckMessage { get; set; } =
+        "Telefonuna bak — önemli bir haber kaçırmış olabilirsin.";
+
+    public string PhoneCheckSound { get; set; } = "reminder";
+
+    public bool PhoneCheckBypassDoNotDisturb { get; set; } = true;
 
     [JsonIgnore]
     public bool FilmModeEnabled { get; set; }
@@ -125,5 +138,23 @@ public static class ConfigStore
 
         if (string.IsNullOrWhiteSpace(config.Message))
             config.Message = "Camdan dışarı bak, gözlerini dinlendir.";
+
+        config.PhoneCheckTimes ??= [];
+        var parsed = DailyPhoneCheckEngine.ParseSlots(config.PhoneCheckTimes);
+        if (parsed.Count == 0)
+        {
+            config.PhoneCheckTimes = ["12:00", "14:00", "16:00"];
+        }
+        else
+        {
+            config.PhoneCheckTimes = parsed
+                .Select(t => $"{(int)t.TotalHours:D2}:{t.Minutes:D2}")
+                .ToList();
+        }
+
+        if (string.IsNullOrWhiteSpace(config.PhoneCheckMessage))
+            config.PhoneCheckMessage = "Telefonuna bak — önemli bir haber kaçırmış olabilirsin.";
+
+        config.PhoneCheckSound = ToastSounds.Resolve(config.PhoneCheckSound).Id;
     }
 }
